@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $installRoot)) {
 
 foreach ($fileName in @('GeorgeTodo.ps1', 'GeorgeTodo.Core.psm1', 'Launch-GeorgeTodo.cmd', 'README.md')) {
     $source = Join-Path $PSScriptRoot $fileName
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "安装包缺少文件：$fileName" }
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Installer package is missing: $fileName" }
     Copy-Item -LiteralPath $source -Destination (Join-Path $installRoot $fileName) -Force
 }
 
@@ -42,9 +42,9 @@ if (-not $NoAutostart) {
     $startupShortcut.Save()
 }
 
-Write-Host "安装目录：$installRoot"
-Write-Host '桌面快捷方式已创建；按 Ctrl + Alt + T 可打开或找回窗口。'
-if (-not $NoAutostart) { Write-Host '开机自动启动已开启。' }
+Write-Host "Installed to: $installRoot"
+Write-Host 'Desktop shortcut created. Press Ctrl + Alt + T to open or recall To-Do List.'
+if (-not $NoAutostart) { Write-Host 'Launch at sign-in is enabled.' }
 
 if (-not $NoLaunch) {
     Start-Process -FilePath $launcher -WorkingDirectory $installRoot -WindowStyle Hidden
