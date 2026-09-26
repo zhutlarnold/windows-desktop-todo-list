@@ -1,0 +1,14 @@
+# Local runtime data (normally stored under %LOCALAPPDATA%\GeorgeTodo)
+tasks.json
+tasks.json.tmp
+tasks.json.invalid-*
+backups/
+runtime.log
+
+# Editor and operating-system files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.user
+*.suo
