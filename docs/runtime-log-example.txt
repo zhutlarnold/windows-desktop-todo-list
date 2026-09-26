@@ -1,0 +1,9 @@
+# Sanitized example only. The real log stays under %LOCALAPPDATA%\GeorgeTodo\runtime.log.
+2026-09-26 17:12:17 START version=20260926-anti-loss tasks=1 source=%LOCALAPPDATA%\GeorgeTodo\App
+2026-09-26 17:12:18 CHECKPOINT xaml-loaded
+2026-09-26 17:12:18 CHECKPOINT controls-ready
+2026-09-26 17:12:18 CHECKPOINT tray-ready
+2026-09-26 17:12:19 CHECKPOINT window-loaded-end tasks=1
+2026-09-26 17:14:16 RECALL signal-sent
+2026-09-26 17:14:16 RECALL signal-received
+2026-09-26 17:14:16 RESTORE end visible=True state=Normal tasks=1

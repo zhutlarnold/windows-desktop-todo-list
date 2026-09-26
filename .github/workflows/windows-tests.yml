@@ -1,0 +1,39 @@
+name: Windows PowerShell tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell files
+        shell: powershell
+        run: |
+          $files = @(
+            '.\GeorgeTodo.ps1',
+            '.\GeorgeTodo.Core.psm1',
+            '.\Install-GeorgeTodo.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count) {
+              $errors | Format-List
+              throw "PowerShell parse failed: $file"
+            }
+          }
+
+      - name: Run core tests
+        shell: powershell
+        run: .\tests\GeorgeTodo.Core.Tests.ps1

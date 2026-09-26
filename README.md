@@ -53,6 +53,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Autostart.ps1 -Rem
 
 桌面和开机快捷方式均指向稳定安装目录，不再依赖某个带日期的交付文件夹。快速重启时，程序会自动接管刚释放的单实例锁；已在后台运行时，快捷方式通过独立召回信号显示原窗口，避免出现“进程还在但窗口找不回来”。
 
+仓库提供了[脱敏运行日志示例](docs/runtime-log-example.txt)。真实日志不会提交到 Git，它只保存在当前电脑的 `%LOCALAPPDATA%\GeorgeTodo\runtime.log`。GitHub Actions 会在每次推送和 Pull Request 时运行 Windows PowerShell 语法检查及核心测试，可在仓库的 **Actions** 页面查看完整测试日志。
+
 ## 设计说明
 
 标题栏直接沿用用户参考图的 “To-Do List” 命名、粉色文字、粉蓝配色与圆润边框。标题小猪 logo 从用户提供的局部参考图中确定性裁切，保存在 `assets\pig-title-logo.png`。窗口针对用户标注的 Windows 桌面右下区域设计，任务操作优先于装饰。
