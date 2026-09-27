@@ -1,9 +1,11 @@
 # Sanitized example only. The real log stays under %LOCALAPPDATA%\GeorgeTodo\runtime.log.
-2026-09-26 17:12:17 START version=20260926-anti-loss tasks=1 source=%LOCALAPPDATA%\GeorgeTodo\App
+2026-09-27 15:43:32 START version=20260926-single-store-autosave tasks=1 data=%USERPROFILE%\AppData\Local\GeorgeTodo source=%USERPROFILE%\AppData\Local\GeorgeTodo\App
 2026-09-26 17:12:18 CHECKPOINT xaml-loaded
 2026-09-26 17:12:18 CHECKPOINT controls-ready
 2026-09-26 17:12:18 CHECKPOINT tray-ready
-2026-09-26 17:12:19 CHECKPOINT window-loaded-end tasks=1
+2026-09-27 15:43:33 RELOAD accepted tasks=1 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
+2026-09-27 15:43:34 CHECKPOINT window-loaded-end tasks=1 draftLength=0 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
+2026-09-27 15:45:02 AUTOSAVE draftLength=12 group=今日主要事项 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
 2026-09-26 17:14:16 RECALL signal-sent
 2026-09-26 17:14:16 RECALL signal-received
 2026-09-26 17:14:16 RESTORE end visible=True state=Normal tasks=1

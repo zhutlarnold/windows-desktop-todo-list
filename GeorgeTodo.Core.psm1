@@ -125,8 +125,22 @@ function New-GeorgeTodoState {
         settings = [pscustomobject]@{
             sumDataPath = 'E:\HFI\sum工具\shared-data.js'
             pinned = $true
+            draftTask = ''
+            draftGroup = '今日主要事项'
         }
     }
+}
+
+function Get-GeorgeTodoDataRoot {
+    [CmdletBinding()]
+    param()
+
+    # Packaged desktop hosts can virtualize LOCALAPPDATA. USERPROFILE remains
+    # the canonical Windows profile, so every launcher resolves one data store.
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    if ([string]::IsNullOrWhiteSpace($userProfile)) { $userProfile = $env:USERPROFILE }
+    if ([string]::IsNullOrWhiteSpace($userProfile)) { throw '无法确定当前 Windows 用户目录。' }
+    return [IO.Path]::GetFullPath((Join-Path $userProfile 'AppData\Local\GeorgeTodo'))
 }
 
 function Read-GeorgeTodoState {
@@ -164,6 +178,8 @@ function ConvertTo-GeorgeTodoState {
     if ($null -eq $state.settings) { $state | Add-Member -NotePropertyName settings -NotePropertyValue ([pscustomobject]@{}) }
     if (-not $state.settings.PSObject.Properties['sumDataPath']) { $state.settings | Add-Member -NotePropertyName sumDataPath -NotePropertyValue 'E:\HFI\sum工具\shared-data.js' }
     if (-not $state.settings.PSObject.Properties['pinned']) { $state.settings | Add-Member -NotePropertyName pinned -NotePropertyValue $true }
+    if (-not $state.settings.PSObject.Properties['draftTask']) { $state.settings | Add-Member -NotePropertyName draftTask -NotePropertyValue '' }
+    if (-not $state.settings.PSObject.Properties['draftGroup']) { $state.settings | Add-Member -NotePropertyName draftGroup -NotePropertyValue '今日主要事项' }
     foreach ($task in @($state.tasks)) {
         if (-not $task.PSObject.Properties['expanded']) { $task | Add-Member -NotePropertyName expanded -NotePropertyValue $true }
         if (-not $task.PSObject.Properties['subtasks'] -or $null -eq $task.subtasks) { $task | Add-Member -Force -NotePropertyName subtasks -NotePropertyValue @() }
@@ -175,12 +191,13 @@ function Save-GeorgeTodoState {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]$State,
-        [Parameter(Mandatory)][string]$Path
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$SkipBackup
     )
 
     $folder = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
-    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    if (-not $SkipBackup -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
         $backupFolder = Join-Path $folder 'backups'
         if (-not (Test-Path -LiteralPath $backupFolder)) { New-Item -ItemType Directory -Path $backupFolder -Force | Out-Null }
         $backupPath = Join-Path $backupFolder ("tasks-{0}-{1}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -194,4 +211,4 @@ function Save-GeorgeTodoState {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
-Export-ModuleMember -Function Get-DailyEncouragement, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState
+Export-ModuleMember -Function Get-DailyEncouragement, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, Get-GeorgeTodoDataRoot, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState

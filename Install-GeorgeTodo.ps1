@@ -4,25 +4,54 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'GeorgeTodo.Core.psm1') -Force
 
-$installRoot = Join-Path $env:LOCALAPPDATA 'GeorgeTodo\App'
+$installRoot = Join-Path (Get-GeorgeTodoDataRoot) 'App'
 $desktop = [Environment]::GetFolderPath('DesktopDirectory')
 $startup = [Environment]::GetFolderPath('Startup')
+
+function Copy-InstallFile {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    if (Test-Path -LiteralPath $Destination -PathType Leaf) {
+        $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Source).Hash
+        $destinationHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash
+        if ($sourceHash -eq $destinationHash) { return }
+    }
+    try {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Force
+    } catch {
+        throw "Unable to update $Destination. Exit To-Do List from its tray menu, then run the installer again."
+    }
+}
 
 if (-not (Test-Path -LiteralPath $installRoot)) {
     New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 }
 
-foreach ($fileName in @('GeorgeTodo.ps1', 'GeorgeTodo.Core.psm1', 'Launch-GeorgeTodo.cmd', 'README.md')) {
+foreach ($fileName in @(
+    'GeorgeTodo.ps1',
+    'GeorgeTodo.Core.psm1',
+    'Launch-GeorgeTodo.cmd',
+    'Install-GeorgeTodo.ps1',
+    'Install-DesktopShortcut.ps1',
+    'Install-Autostart.ps1',
+    'README.md'
+)) {
     $source = Join-Path $PSScriptRoot $fileName
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Installer package is missing: $fileName" }
-    Copy-Item -LiteralPath $source -Destination (Join-Path $installRoot $fileName) -Force
+    Copy-InstallFile -Source $source -Destination (Join-Path $installRoot $fileName)
 }
 
 $sourceAssets = Join-Path $PSScriptRoot 'assets'
 $targetAssets = Join-Path $installRoot 'assets'
 if (-not (Test-Path -LiteralPath $targetAssets)) { New-Item -ItemType Directory -Path $targetAssets -Force | Out-Null }
-Copy-Item -Path (Join-Path $sourceAssets '*') -Destination $targetAssets -Force
+foreach ($asset in @(Get-ChildItem -LiteralPath $sourceAssets -File)) {
+    Copy-InstallFile -Source $asset.FullName -Destination (Join-Path $targetAssets $asset.Name)
+}
 
 $launcher = Join-Path $installRoot 'Launch-GeorgeTodo.cmd'
 $shell = New-Object -ComObject WScript.Shell

@@ -7,7 +7,7 @@ Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Import-Module (Join-Path $PSScriptRoot 'GeorgeTodo.Core.psm1') -Force
 
-$script:dataFolder = Join-Path $env:LOCALAPPDATA 'GeorgeTodo'
+$script:dataFolder = Get-GeorgeTodoDataRoot
 if (-not (Test-Path -LiteralPath $script:dataFolder)) { New-Item -ItemType Directory -Path $script:dataFolder -Force | Out-Null }
 $script:runtimeLog = Join-Path $script:dataFolder 'runtime.log'
 function Write-RuntimeLog([string]$Message) {
@@ -47,7 +47,8 @@ $script:sumExams = @()
 $script:expandedSubtext = [Collections.Generic.HashSet[string]]::new()
 $script:allowExit = $false
 $script:notifyIcon = $null
-Write-RuntimeLog "START version=20260926-anti-loss tasks=$(@($script:state.tasks).Count) source=$PSScriptRoot"
+$script:suppressDraftSave = $false
+Write-RuntimeLog "START version=20260926-single-store-autosave tasks=$(@($script:state.tasks).Count) data=$script:dataFolder source=$PSScriptRoot"
 
 [xml]$xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -207,8 +208,12 @@ Write-RuntimeLog 'CHECKPOINT controls-ready'
 
 function New-Brush([string]$Hex) { return [Windows.Media.BrushConverter]::new().ConvertFromString($Hex) }
 
-function Save-State([string]$Message = '已保存') {
-    Save-GeorgeTodoState -State $script:state -Path $script:statePath
+function Save-State([string]$Message = '已保存', [bool]$SkipBackup = $false) {
+    if ($SkipBackup) {
+        Save-GeorgeTodoState -State $script:state -Path $script:statePath -SkipBackup
+    } else {
+        Save-GeorgeTodoState -State $script:state -Path $script:statePath
+    }
     $statusText.Text = $Message
 }
 
@@ -218,7 +223,15 @@ function Reload-StateFromDisk {
         if ($null -eq $loadedState -or $null -eq $loadedState.tasks) {
             throw '本地待办文件没有返回有效数据。'
         }
+        $loadedCount = @($loadedState.tasks).Count
+        $memoryCount = @($script:state.tasks).Count
+        if ($loadedCount -eq 0 -and $memoryCount -gt 0) {
+            Write-RuntimeLog "RELOAD rejected-empty disk=0 memory=$memoryCount path=$script:statePath"
+            $statusText.Text = '检测到异常空数据，已保留当前待办。'
+            return $false
+        }
         $script:state = $loadedState
+        Write-RuntimeLog "RELOAD accepted tasks=$loadedCount path=$script:statePath"
         return $true
     } catch {
         $statusText.Text = '待办读取失败；原文件仍保留，请重试。'
@@ -235,7 +248,7 @@ function Restore-TodoWindow {
         }
         Dock-Right
         Reload-StateFromDisk | Out-Null
-        Refresh-Groups
+        Restore-Draft
         Render-Tasks
         $window.Activate() | Out-Null
         $window.Topmost = [bool]$script:state.settings.pinned
@@ -248,6 +261,7 @@ function Restore-TodoWindow {
 
 function Hide-TodoWindow {
     Write-RuntimeLog "HIDE requested visible=$($window.IsVisible)"
+    Save-DraftNow
     $window.Hide()
     $statusText.Text = '已隐藏；按 Ctrl + Alt + T 可重新打开'
     Write-RuntimeLog "HIDE completed visible=$($window.IsVisible)"
@@ -349,14 +363,43 @@ function Refresh-Exams([bool]$Force=$false) {
 }
 
 function Refresh-Groups {
-    $groupCombo.Items.Clear();foreach($group in @($script:state.groups)){$groupCombo.Items.Add([string]$group)|Out-Null};if($groupCombo.Items.Count){$groupCombo.SelectedIndex=0}
+    $preferred=[string]$script:state.settings.draftGroup
+    $groupCombo.Items.Clear();foreach($group in @($script:state.groups)){$groupCombo.Items.Add([string]$group)|Out-Null}
+    if($groupCombo.Items.Count){if($preferred-in@($script:state.groups)){$groupCombo.SelectedItem=$preferred}else{$groupCombo.SelectedIndex=0}}
+}
+
+function Restore-Draft {
+    $script:suppressDraftSave=$true
+    try {
+        Refresh-Groups
+        $newTaskText.Text=[string]$script:state.settings.draftTask
+        $newTaskText.CaretIndex=$newTaskText.Text.Length
+    } finally {
+        $script:suppressDraftSave=$false
+    }
+}
+
+function Save-DraftNow {
+    if($script:suppressDraftSave){return}
+    $draft=[string]$newTaskText.Text
+    $draftGroup=if($null-ne$groupCombo.SelectedItem){[string]$groupCombo.SelectedItem}else{'今日主要事项'}
+    $currentDraft=[string]$script:state.settings.draftTask
+    $currentDraftGroup=[string]$script:state.settings.draftGroup
+    if($currentDraft -eq $draft -and $currentDraftGroup -eq $draftGroup){return}
+    $script:state.settings.draftTask=$draft
+    $script:state.settings.draftGroup=$draftGroup
+    Save-State '输入已自动保存' $true
+    Write-RuntimeLog "AUTOSAVE draftLength=$($draft.Length) group=$draftGroup path=$script:statePath"
 }
 
 function Add-MainTask {
     $value=$newTaskText.Text.Trim();if([string]::IsNullOrWhiteSpace($value)){return}
     $group=if($null-ne$groupCombo.SelectedItem){[string]$groupCombo.SelectedItem}else{'今日主要事项'}
     $script:state.tasks=@($script:state.tasks)+[pscustomobject]@{id='task-'+[guid]::NewGuid().ToString('N');title=$value;group=$group;completed=$false;expanded=$true;subtasks=@()}
-    $newTaskText.Clear();Save-State '主事项已添加';Render-Tasks
+    $script:suppressDraftSave=$true
+    try{$newTaskText.Clear()}finally{$script:suppressDraftSave=$false}
+    $script:state.settings.draftTask='';$script:state.settings.draftGroup=$group
+    Save-State '主事项已添加';Render-Tasks
 }
 
 function Dock-Right {
@@ -378,6 +421,9 @@ function Dock-Right {
 (& $find 'PinButton').Add_Click({$window.Topmost=-not$window.Topmost;$script:state.settings.pinned=$window.Topmost;(& $find 'PinLabel').Text=if($window.Topmost){'置顶'}else{'普通'};Save-State (if($window.Topmost){'已保持在最前'}else{'已取消置顶'})})
 (& $find 'AddTaskButton').Add_Click({Add-MainTask})
 $newTaskText.Add_KeyDown({if($_.Key-eq'Return'){Add-MainTask}})
+$newTaskText.Add_TextChanged({Save-DraftNow})
+$newTaskText.Add_LostKeyboardFocus({Save-DraftNow})
+$groupCombo.Add_SelectionChanged({Save-DraftNow})
 (& $find 'RefreshExamsButton').Add_Click({Refresh-Exams $true})
 (& $find 'NewGroupButton').Add_Click({$value=Show-TextEditor '新建分组' '分组名称';if($null-ne$value-and$value-notin@($script:state.groups)){$script:state.groups=@($script:state.groups)+$value;Save-State '分组已创建';Refresh-Groups;Render-Tasks;$groupCombo.SelectedItem=$value}})
 
@@ -397,7 +443,7 @@ $showTrayItem.Add_Click({Restore-TodoWindow})
 $script:notifyIcon.Add_DoubleClick({Restore-TodoWindow})
 $exitTrayItem.Add_Click({$script:allowExit=$true;$window.Close()})
 $window.Topmost=[bool]$script:state.settings.pinned
-$window.Add_Loaded({Write-RuntimeLog 'CHECKPOINT window-loaded-start';Reload-StateFromDisk|Out-Null;Dock-Right;Refresh-Groups;Render-Tasks;Refresh-Exams $true;if(-not$NoActivate){$window.Activate()|Out-Null};Write-RuntimeLog "CHECKPOINT window-loaded-end tasks=$(@($script:state.tasks).Count)"})
+$window.Add_Loaded({Write-RuntimeLog 'CHECKPOINT window-loaded-start';Reload-StateFromDisk|Out-Null;Dock-Right;Restore-Draft;Render-Tasks;Refresh-Exams $true;if(-not$NoActivate){$window.Activate()|Out-Null};Write-RuntimeLog "CHECKPOINT window-loaded-end tasks=$(@($script:state.tasks).Count) draftLength=$(([string]$script:state.settings.draftTask).Length) path=$script:statePath"})
 $window.Add_LocationChanged({$area=[Windows.SystemParameters]::WorkArea;if([math]::Abs(($window.Left+$window.ActualWidth)-$area.Right)-lt28){$window.Left=$area.Right-$window.ActualWidth-12}})
 $window.Add_Closing({param($sender,$args)if(-not$script:allowExit){$args.Cancel=$true;Hide-TodoWindow}})
 $window.Add_Closed({$timer.Stop();$recallTimer.Stop();if($null-ne$script:notifyIcon){$script:notifyIcon.Visible=$false;$script:notifyIcon.Dispose()};Write-RuntimeLog 'EXIT';$recallEvent.Dispose();$mutex.ReleaseMutex();$mutex.Dispose()})

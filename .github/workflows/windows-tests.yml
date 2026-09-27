@@ -18,7 +18,9 @@ jobs:
           $files = @(
             '.\GeorgeTodo.ps1',
             '.\GeorgeTodo.Core.psm1',
-            '.\Install-GeorgeTodo.ps1'
+            '.\Install-GeorgeTodo.ps1',
+            '.\Install-DesktopShortcut.ps1',
+            '.\Install-Autostart.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
