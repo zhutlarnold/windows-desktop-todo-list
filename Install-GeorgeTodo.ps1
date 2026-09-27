@@ -114,6 +114,19 @@ if ($null -ne $bestState -and $bestState.Path -ne $targetState) {
     }
 }
 
+# Ensure a newly migrated installation has an immediately usable recovery
+# point even before the user performs the next task edit.
+if (Test-Path -LiteralPath $targetState -PathType Leaf) {
+    $baselineBackupFolder = Join-Path $dataRoot 'backups'
+    if (-not (Test-Path -LiteralPath $baselineBackupFolder)) { New-Item -ItemType Directory -Path $baselineBackupFolder -Force | Out-Null }
+    $existingRecoveryPoints = @(Get-ChildItem -LiteralPath $baselineBackupFolder -Filter 'tasks-*.json' -File -ErrorAction SilentlyContinue)
+    if ($existingRecoveryPoints.Count -eq 0) {
+        $baselinePath = Join-Path $baselineBackupFolder ("tasks-install-baseline-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        $baselineText = [IO.File]::ReadAllText($targetState, [Text.Encoding]::UTF8)
+        [IO.File]::WriteAllText($baselinePath, $baselineText, [Text.UTF8Encoding]::new($false))
+    }
+}
+
 $appScript = Join-Path $appRoot 'GeorgeTodo.ps1'
 $shortcutArguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$appScript`""
 $shell = New-Object -ComObject WScript.Shell
