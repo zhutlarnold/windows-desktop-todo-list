@@ -7,7 +7,8 @@ Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Import-Module (Join-Path $PSScriptRoot 'GeorgeTodo.Core.psm1') -Force
 
-$script:dataFolder = Get-GeorgeTodoDataRoot
+$script:installRoot = Get-GeorgeTodoInstallRoot -ScriptRoot $PSScriptRoot
+$script:dataFolder = Get-GeorgeTodoDataRoot -InstallRoot $script:installRoot
 if (-not (Test-Path -LiteralPath $script:dataFolder)) { New-Item -ItemType Directory -Path $script:dataFolder -Force | Out-Null }
 $script:runtimeLog = Join-Path $script:dataFolder 'runtime.log'
 function Write-RuntimeLog([string]$Message) {
@@ -19,26 +20,18 @@ trap {
     break
 }
 
-$createdNew = $false
-$recallEvent = [Threading.EventWaitHandle]::new($false, [Threading.EventResetMode]::AutoReset, 'Local\GeorgeTodoRecall')
-$mutex = [Threading.Mutex]::new($true, 'Local\GeorgeTodoDesktopApp', [ref]$createdNew)
-if (-not $createdNew) {
-    try {
-        # A previous process may have exited a moment ago while its named mutex is
-        # still being released. Taking over that abandoned/released mutex avoids a
-        # silent no-window launch during rapid restart or shortcut recall.
-        $createdNew = $mutex.WaitOne(1500)
-    } catch [Threading.AbandonedMutexException] {
-        $createdNew = $true
-    }
-}
-if (-not $createdNew) {
-    $recallEvent.Set() | Out-Null
-    Write-RuntimeLog 'RECALL signal-sent'
-    $mutex.Dispose()
-    $recallEvent.Dispose()
+$script:lockPath = Join-Path $script:dataFolder 'GeorgeTodo.lock'
+$script:recallSignalPath = Join-Path $script:dataFolder 'recall.signal'
+$script:instanceLock = $null
+try {
+    $script:instanceLock = [IO.File]::Open($script:lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+} catch [IO.IOException] {
+    $token = [guid]::NewGuid().ToString('N')
+    [IO.File]::WriteAllText($script:recallSignalPath, $token, [Text.UTF8Encoding]::new($false))
+    Write-RuntimeLog "RECALL file-signal-sent token=$token"
     exit 0
 }
+$script:lastRecallToken = ''
 
 $script:statePath = Join-Path $script:dataFolder 'tasks.json'
 $script:state = Read-GeorgeTodoState -Path $script:statePath
@@ -48,7 +41,7 @@ $script:expandedSubtext = [Collections.Generic.HashSet[string]]::new()
 $script:allowExit = $false
 $script:notifyIcon = $null
 $script:suppressDraftSave = $false
-Write-RuntimeLog "START version=20260926-single-store-autosave tasks=$(@($script:state.tasks).Count) data=$script:dataFolder source=$PSScriptRoot"
+Write-RuntimeLog "START version=20260927-program-drive-file-recall tasks=$(@($script:state.tasks).Count) install=$script:installRoot data=$script:dataFolder source=$PSScriptRoot"
 
 [xml]$xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -267,6 +260,50 @@ function Hide-TodoWindow {
     Write-RuntimeLog "HIDE completed visible=$($window.IsVisible)"
 }
 
+function Test-RecallSignal {
+    try {
+        if (-not (Test-Path -LiteralPath $script:recallSignalPath -PathType Leaf)) { return }
+        $token = ([IO.File]::ReadAllText($script:recallSignalPath, [Text.Encoding]::UTF8)).Trim()
+        if ([string]::IsNullOrWhiteSpace($token) -or $token -eq $script:lastRecallToken) { return }
+        $script:lastRecallToken = $token
+        Write-RuntimeLog "RECALL file-signal-received token=$token"
+        Restore-TodoWindow
+    } catch {
+        Write-RuntimeLog "RECALL file-signal-failed $($_.Exception.Message)"
+    }
+}
+
+function Repair-LaunchShortcuts {
+    try {
+        $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $appScript = Join-Path $PSScriptRoot 'GeorgeTodo.ps1'
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$appScript`""
+        $shell = New-Object -ComObject WScript.Shell
+        $desktopShortcutPath = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'To-Do List.lnk'
+        $desktopShortcut = $shell.CreateShortcut($desktopShortcutPath)
+        $desktopShortcut.TargetPath = $powershellExe
+        $desktopShortcut.Arguments = $arguments
+        $desktopShortcut.WorkingDirectory = $PSScriptRoot
+        $desktopShortcut.Description = '打开或找回 To-Do List'
+        $desktopShortcut.Hotkey = 'CTRL+ALT+T'
+        $desktopShortcut.Save()
+
+        $autostartMarker = Join-Path $script:installRoot 'autostart.enabled'
+        if (Test-Path -LiteralPath $autostartMarker -PathType Leaf) {
+            $startupShortcutPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'To-Do List.lnk'
+            $startupShortcut = $shell.CreateShortcut($startupShortcutPath)
+            $startupShortcut.TargetPath = $powershellExe
+            $startupShortcut.Arguments = $arguments
+            $startupShortcut.WorkingDirectory = $PSScriptRoot
+            $startupShortcut.Description = 'To-Do List - Windows 桌面待办'
+            $startupShortcut.Save()
+        }
+        Write-RuntimeLog "SHORTCUT repair-complete target=$powershellExe script=$appScript"
+    } catch {
+        Write-RuntimeLog "SHORTCUT repair-failed $($_.Exception.Message)"
+    }
+}
+
 function Show-TextEditor {
     param([string]$Title, [string]$Prompt, [string]$Value = '')
     $result = [Microsoft.VisualBasic.Interaction]::InputBox($Prompt, $Title, $Value)
@@ -429,7 +466,7 @@ $groupCombo.Add_SelectionChanged({Save-DraftNow})
 
 $timer=[Windows.Threading.DispatcherTimer]::new();$timer.Interval=[timespan]::FromSeconds(60);$timer.Add_Tick({Refresh-Exams});$timer.Start()
 Write-RuntimeLog 'CHECKPOINT timer-started'
-$recallTimer=[Windows.Threading.DispatcherTimer]::new();$recallTimer.Interval=[timespan]::FromMilliseconds(250);$recallTimer.Add_Tick({if($recallEvent.WaitOne(0)){Write-RuntimeLog 'RECALL signal-received';Restore-TodoWindow}});$recallTimer.Start()
+$recallTimer=[Windows.Threading.DispatcherTimer]::new();$recallTimer.Interval=[timespan]::FromMilliseconds(250);$recallTimer.Add_Tick({Test-RecallSignal});$recallTimer.Start()
 $trayMenu = [Windows.Forms.ContextMenuStrip]::new()
 $showTrayItem = $trayMenu.Items.Add('显示 To-Do List')
 $exitTrayItem = $trayMenu.Items.Add('退出')
@@ -443,9 +480,12 @@ $showTrayItem.Add_Click({Restore-TodoWindow})
 $script:notifyIcon.Add_DoubleClick({Restore-TodoWindow})
 $exitTrayItem.Add_Click({$script:allowExit=$true;$window.Close()})
 $window.Topmost=[bool]$script:state.settings.pinned
-$window.Add_Loaded({Write-RuntimeLog 'CHECKPOINT window-loaded-start';Reload-StateFromDisk|Out-Null;Dock-Right;Restore-Draft;Render-Tasks;Refresh-Exams $true;if(-not$NoActivate){$window.Activate()|Out-Null};Write-RuntimeLog "CHECKPOINT window-loaded-end tasks=$(@($script:state.tasks).Count) draftLength=$(([string]$script:state.settings.draftTask).Length) path=$script:statePath"})
+$window.Add_Loaded({Write-RuntimeLog 'CHECKPOINT window-loaded-start';Reload-StateFromDisk|Out-Null;Dock-Right;Restore-Draft;Render-Tasks;Refresh-Exams $true;Repair-LaunchShortcuts;if(-not$NoActivate){$window.Activate()|Out-Null};Write-RuntimeLog "CHECKPOINT window-loaded-end tasks=$(@($script:state.tasks).Count) draftLength=$(([string]$script:state.settings.draftTask).Length) path=$script:statePath"})
 $window.Add_LocationChanged({$area=[Windows.SystemParameters]::WorkArea;if([math]::Abs(($window.Left+$window.ActualWidth)-$area.Right)-lt28){$window.Left=$area.Right-$window.ActualWidth-12}})
 $window.Add_Closing({param($sender,$args)if(-not$script:allowExit){$args.Cancel=$true;Hide-TodoWindow}})
-$window.Add_Closed({$timer.Stop();$recallTimer.Stop();if($null-ne$script:notifyIcon){$script:notifyIcon.Visible=$false;$script:notifyIcon.Dispose()};Write-RuntimeLog 'EXIT';$recallEvent.Dispose();$mutex.ReleaseMutex();$mutex.Dispose()})
-Write-RuntimeLog 'CHECKPOINT show-dialog'
-$window.ShowDialog() | Out-Null
+$window.Add_Closed({$timer.Stop();$recallTimer.Stop();if($null-ne$script:notifyIcon){$script:notifyIcon.Visible=$false;$script:notifyIcon.Dispose()};Write-RuntimeLog 'EXIT';if($null-ne$script:instanceLock){$script:instanceLock.Dispose()}})
+$script:application = [Windows.Application]::Current
+if ($null -eq $script:application) { $script:application = [Windows.Application]::new() }
+$script:application.ShutdownMode = [Windows.ShutdownMode]::OnMainWindowClose
+Write-RuntimeLog 'CHECKPOINT application-run'
+$script:application.Run($window) | Out-Null

@@ -8,8 +8,8 @@
 - 新事项输入框采用写入即保存：尚未按 `+` 的文字也会作为草稿原子保存，重新打开自动恢复。
 - 长子事项按需展开，窄窗口中仍能保持操作按钮清晰。
 - 本地原子保存、最近 10 份自动备份与损坏自动恢复。
-- `×` 隐藏到后台；桌面快捷方式或 `Ctrl + Alt + T` 可靠召回。
-- 固定安装目录与开机启动，升级不会使快捷方式失效。
+- `×` 隐藏到后台；桌面快捷方式或 `Ctrl + Alt + T` 通过跨沙箱文件信号可靠召回。
+- 程序与数据统一放在普通程序盘目录，不再使用 `WpSystem` 或 Codex 隔离区。
 - 只读联动 SUM Plan，展示未来 14 天内属于本人的考试和日程。
 
 ## 一键安装（推荐）
@@ -20,7 +20,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-GeorgeTodo.ps1
 ```
 
-脚本会安装到 `%LOCALAPPDATA%\GeorgeTodo\App`，创建桌面快捷方式、注册 `Ctrl + Alt + T` 并开启当前用户的开机启动。使用 `-NoAutostart` 可以跳过开机启动，使用 `-NoLaunch` 可以只安装而不立即运行。
+在当前电脑上，脚本会安装到 `E:\Programs\To-Do-List`，创建桌面快捷方式、注册 `Ctrl + Alt + T` 并开启当前用户的开机启动。可用 `-InstallRoot` 指定其他普通程序目录；没有 E: 盘时自动回退到当前用户的 `Programs\To-Do-List`。使用 `-NoAutostart` 可以跳过开机启动，使用 `-NoLaunch` 可以只安装而不立即运行。
 
 ## 便携启动
 
@@ -38,25 +38,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Autostart.ps1 -Rem
 
 运行 `Install-DesktopShortcut.ps1` 会在桌面创建 `To-Do List` 快捷方式，并注册 `Ctrl+Alt+T`。应用已经运行时，再双击快捷方式或按快捷键不会重复打开，而会恢复并找回原来的窗口。
 
-右上角 `×` 现在只会把窗口隐藏到后台，不会清空或退出待办。除了快捷键和桌面快捷方式，也可以双击系统托盘中的 `To-Do List` 图标重新显示；需要彻底退出时，右键该托盘图标并选择“退出”。
+右上角 `×` 现在只会把窗口隐藏到后台，不会清空或退出待办。程序使用持续的 WPF 应用消息循环，隐藏窗口后后台进程、文件锁和召回监听仍保持运行。除了快捷键和桌面快捷方式，也可以双击系统托盘中的 `To-Do List` 图标重新显示；需要彻底退出时，右键该托盘图标并选择“退出”。
 
 长子事项默认保持单行，避免挤压“编辑 / 删除”操作；文字较长时可点击“展开全文”，阅读后点击“收起”。
 
 ## 数据位置
 
-- To-Do 状态：`%LOCALAPPDATA%\GeorgeTodo\tasks.json`
-- 自动备份：`%LOCALAPPDATA%\GeorgeTodo\backups`（保留最近 10 份；主文件损坏时自动恢复）
-- 稳定安装目录：`%LOCALAPPDATA%\GeorgeTodo\App`
-- 运行记录：`%LOCALAPPDATA%\GeorgeTodo\runtime.log`
+- 稳定安装目录：`E:\Programs\To-Do-List\App`
+- To-Do 状态：`E:\Programs\To-Do-List\Data\tasks.json`
+- 自动备份：`E:\Programs\To-Do-List\Data\backups`（保留最近 10 份；主文件损坏时自动恢复）
+- 运行记录：`E:\Programs\To-Do-List\Data\runtime.log`
 - 考试来源：`E:\HFI\sum工具\shared-data.js`
 
 应用只读 SUM Plan 的共享快照，不会复制或写回考试与日程数据。仅显示从今天起 14 天内的本人事项，范围外的内容不会自动放到新 To-Do。SUM Plan 在脚本模式下保存变化时会更新 `shared-data.js`；乔治待办每分钟检查一次变化，也可以点击“刷新”。
 
-桌面和开机快捷方式均指向稳定安装目录，不再依赖某个带日期的交付文件夹。快速重启时，程序会自动接管刚释放的单实例锁；已在后台运行时，快捷方式通过独立召回信号显示原窗口，避免出现“进程还在但窗口找不回来”。
+桌面和开机快捷方式不再把 `.cmd` 复制件当作目标，而是直接调用 Windows 系统 PowerShell，并把固定程序脚本作为参数。这可防止 Windows 快捷方式跟踪把目标自动改写到 `E:\WpSystem\...\OpenAI.Codex` 副本。程序每次启动还会自检和修正快捷方式。
 
-程序不会直接信任可能被商店应用沙箱重定向的 `LOCALAPPDATA` 环境变量，而是从当前 Windows 用户目录解析唯一数据根目录。这样无论从桌面、开机启动、终端还是其他桌面应用启动，都只会读取同一个 `tasks.json`。
+单实例检测和窗口召回现在使用固定数据目录中的独占文件锁与 `recall.signal`，不再依赖会被 AppContainer 隔离的命名 Mutex/Event。因此即使启动来源不同，也会共享同一份锁、召回信号和 `tasks.json`。
 
-仓库提供了[脱敏运行日志示例](docs/runtime-log-example.txt)。真实日志不会提交到 Git，它只保存在当前电脑的 `%LOCALAPPDATA%\GeorgeTodo\runtime.log`。GitHub Actions 会在每次推送和 Pull Request 时运行 Windows PowerShell 语法检查及核心测试，可在仓库的 **Actions** 页面查看完整测试日志。
+仓库提供了[脱敏运行日志示例](docs/runtime-log-example.txt)。真实日志不会提交到 Git，它只保存在当前电脑的 `E:\Programs\To-Do-List\Data\runtime.log`。GitHub Actions 会在每次推送和 Pull Request 时运行 Windows PowerShell 语法检查及核心测试，可在仓库的 **Actions** 页面查看完整测试日志。
 
 ## 设计说明
 

@@ -1,11 +1,13 @@
-# Sanitized example only. The real log stays under %LOCALAPPDATA%\GeorgeTodo\runtime.log.
-2026-09-27 15:43:32 START version=20260926-single-store-autosave tasks=1 data=%USERPROFILE%\AppData\Local\GeorgeTodo source=%USERPROFILE%\AppData\Local\GeorgeTodo\App
-2026-09-26 17:12:18 CHECKPOINT xaml-loaded
-2026-09-26 17:12:18 CHECKPOINT controls-ready
-2026-09-26 17:12:18 CHECKPOINT tray-ready
-2026-09-27 15:43:33 RELOAD accepted tasks=1 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
-2026-09-27 15:43:34 CHECKPOINT window-loaded-end tasks=1 draftLength=0 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
-2026-09-27 15:45:02 AUTOSAVE draftLength=12 group=今日主要事项 path=%USERPROFILE%\AppData\Local\GeorgeTodo\tasks.json
-2026-09-26 17:14:16 RECALL signal-sent
-2026-09-26 17:14:16 RECALL signal-received
-2026-09-26 17:14:16 RESTORE end visible=True state=Normal tasks=1
+# Sanitized example only. The real log stays under E:\Programs\To-Do-List\Data\runtime.log.
+2026-09-27 18:37:05 START version=20260927-program-drive-file-recall tasks=1 install=E:\Programs\To-Do-List data=E:\Programs\To-Do-List\Data source=E:\Programs\To-Do-List\App
+2026-09-27 18:37:05 CHECKPOINT xaml-loaded
+2026-09-27 18:37:05 CHECKPOINT controls-ready
+2026-09-27 18:37:05 CHECKPOINT application-run
+2026-09-27 18:37:06 RELOAD accepted tasks=1 path=E:\Programs\To-Do-List\Data\tasks.json
+2026-09-27 18:37:07 SHORTCUT repair-complete target=%SYSTEMROOT%\System32\WindowsPowerShell\v1.0\powershell.exe script=E:\Programs\To-Do-List\App\GeorgeTodo.ps1
+2026-09-27 18:37:07 CHECKPOINT window-loaded-end tasks=1 draftLength=0 path=E:\Programs\To-Do-List\Data\tasks.json
+2026-09-27 18:38:37 HIDE completed visible=False
+2026-09-27 18:38:42 RECALL file-signal-sent token=<redacted>
+2026-09-27 18:38:42 RECALL file-signal-received token=<redacted>
+2026-09-27 18:38:42 RESTORE end visible=True state=Normal tasks=1
+2026-09-27 18:41:16 AUTOSAVE draftLength=28 group=今日主要事项 path=E:\Programs\To-Do-List\Data\tasks.json

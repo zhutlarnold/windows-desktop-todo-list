@@ -8,13 +8,16 @@ if ($Remove) {
     Write-Host "Desktop shortcut removed: $shortcutPath"
     exit 0
 }
-$installRoot = Join-Path (Get-GeorgeTodoDataRoot) 'App'
-$launcher = Join-Path $installRoot 'Launch-GeorgeTodo.cmd'
-if (-not (Test-Path -LiteralPath $launcher)) { throw 'Run Install-GeorgeTodo.ps1 before creating shortcuts.' }
+$installRoot = Get-GeorgeTodoInstallRoot -ScriptRoot $PSScriptRoot
+$appRoot = Join-Path $installRoot 'App'
+$appScript = Join-Path $appRoot 'GeorgeTodo.ps1'
+if (-not (Test-Path -LiteralPath $appScript)) { throw 'Run Install-GeorgeTodo.ps1 before creating shortcuts.' }
+$powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $launcher
-$shortcut.WorkingDirectory = $installRoot
+$shortcut.TargetPath = $powershellExe
+$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$appScript`""
+$shortcut.WorkingDirectory = $appRoot
 $shortcut.Description = '打开或找回 To-Do List'
 $shortcut.Hotkey = 'CTRL+ALT+T'
 $shortcut.Save()

@@ -131,16 +131,54 @@ function New-GeorgeTodoState {
     }
 }
 
+function Get-GeorgeTodoInstallRoot {
+    [CmdletBinding()]
+    param(
+        [string]$ScriptRoot,
+        [string]$PreferredRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($PreferredRoot)) {
+        return [IO.Path]::GetFullPath($PreferredRoot)
+    }
+
+    # The installer writes this marker into App. A copied launcher therefore
+    # still resolves the one real installation instead of creating a second
+    # state store inside WpSystem or another packaged-app sandbox.
+    if (-not [string]::IsNullOrWhiteSpace($ScriptRoot)) {
+        $marker = Join-Path $ScriptRoot 'install-root.txt'
+        if (Test-Path -LiteralPath $marker -PathType Leaf) {
+            $markedRoot = ([IO.File]::ReadAllText($marker, [Text.Encoding]::UTF8)).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($markedRoot) -and [IO.Path]::IsPathRooted($markedRoot)) {
+                return [IO.Path]::GetFullPath($markedRoot)
+            }
+        }
+    }
+
+    if (Test-Path -LiteralPath 'E:\' -PathType Container) {
+        return 'E:\Programs\To-Do-List'
+    }
+
+    # Portable fallback for computers without E:. Resolve the real profile from
+    # the account SID in HKLM; do not trust virtualizable LOCALAPPDATA/USERPROFILE.
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $profileKey = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid"
+    $profilePath = [Environment]::ExpandEnvironmentVariables([string](Get-ItemPropertyValue -LiteralPath $profileKey -Name ProfileImagePath -ErrorAction Stop))
+    if ([string]::IsNullOrWhiteSpace($profilePath)) { throw '无法确定当前 Windows 用户目录。' }
+    return [IO.Path]::GetFullPath((Join-Path $profilePath 'AppData\Local\Programs\To-Do-List'))
+}
+
 function Get-GeorgeTodoDataRoot {
     [CmdletBinding()]
-    param()
+    param(
+        [string]$InstallRoot,
+        [string]$ScriptRoot
+    )
 
-    # Packaged desktop hosts can virtualize LOCALAPPDATA. USERPROFILE remains
-    # the canonical Windows profile, so every launcher resolves one data store.
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    if ([string]::IsNullOrWhiteSpace($userProfile)) { $userProfile = $env:USERPROFILE }
-    if ([string]::IsNullOrWhiteSpace($userProfile)) { throw '无法确定当前 Windows 用户目录。' }
-    return [IO.Path]::GetFullPath((Join-Path $userProfile 'AppData\Local\GeorgeTodo'))
+    if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+        $InstallRoot = Get-GeorgeTodoInstallRoot -ScriptRoot $ScriptRoot
+    }
+    return [IO.Path]::GetFullPath((Join-Path $InstallRoot 'Data'))
 }
 
 function Read-GeorgeTodoState {
@@ -211,4 +249,4 @@ function Save-GeorgeTodoState {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
-Export-ModuleMember -Function Get-DailyEncouragement, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, Get-GeorgeTodoDataRoot, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState
+Export-ModuleMember -Function Get-DailyEncouragement, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, Get-GeorgeTodoInstallRoot, Get-GeorgeTodoDataRoot, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState

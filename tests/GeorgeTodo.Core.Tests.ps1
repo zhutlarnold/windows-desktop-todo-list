@@ -8,18 +8,27 @@ function Assert-True([bool]$Condition, [string]$Message) {
 $date = [datetime]'2026-09-26'
 Assert-True ((Get-DailyEncouragement -Date $date) -ne (Get-DailyEncouragement -Date $date.AddDays(1))) 'daily encouragement should change on adjacent days'
 
-$dataRoot = Get-GeorgeTodoDataRoot
-$expectedDataRoot = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) 'AppData\Local\GeorgeTodo'
-Assert-True ($dataRoot -eq [IO.Path]::GetFullPath($expectedDataRoot)) 'data root should use the canonical Windows user profile'
+$fixedInstallRoot = Get-GeorgeTodoInstallRoot -PreferredRoot 'E:\Programs\To-Do-List'
+$dataRoot = Get-GeorgeTodoDataRoot -InstallRoot $fixedInstallRoot
+Assert-True ($fixedInstallRoot -eq 'E:\Programs\To-Do-List') 'explicit program-drive installation root should be stable'
+Assert-True ($dataRoot -eq 'E:\Programs\To-Do-List\Data') 'data should live below the one installation root'
 Assert-True ($dataRoot -notmatch '(?i)WpSystem|Packages\\OpenAI\.Codex') 'data root should never use a packaged-app sandbox'
 
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $appSource = Get-Content -LiteralPath (Join-Path $projectRoot 'GeorgeTodo.ps1') -Raw
 $installerSource = Get-Content -LiteralPath (Join-Path $projectRoot 'Install-GeorgeTodo.ps1') -Raw
-Assert-True ($appSource -match '\$script:dataFolder\s*=\s*Get-GeorgeTodoDataRoot') 'app should always use the canonical data root helper'
+Assert-True ($appSource -match 'Get-GeorgeTodoInstallRoot\s+-ScriptRoot\s+\$PSScriptRoot') 'app should resolve its fixed installation marker'
+Assert-True ($appSource -match '\$script:dataFolder\s*=\s*Get-GeorgeTodoDataRoot\s+-InstallRoot') 'app should always store data below the fixed installation root'
 Assert-True ($appSource -match 'Add_TextChanged\(\{Save-DraftNow\}\)') 'new-task input should be wired to write-through autosave'
-Assert-True ($installerSource -match 'Get-GeorgeTodoDataRoot') 'installer should use the canonical data root helper'
+Assert-True ($appSource -match '\[IO\.File\]::Open\(\$script:lockPath') 'single instance should use a cross-context exclusive file lock'
+Assert-True ($appSource -match 'recall\.signal') 'window recall should use a cross-context file signal'
+Assert-True ($appSource -notmatch 'EventWaitHandle|Threading\.Mutex') 'window recall must not rely on app-container kernel namespaces'
+Assert-True ($appSource -match '\$script:application\.Run\(\$window\)') 'app should keep a real WPF message loop alive while the window is hidden'
+Assert-True ($appSource -notmatch '\$window\.ShowDialog\(\)') 'hiding a modal ShowDialog window would terminate the background process'
+Assert-True ($installerSource -match 'Get-GeorgeTodoInstallRoot') 'installer should use the fixed program-drive root helper'
 Assert-True ($installerSource -notmatch '\$env:LOCALAPPDATA') 'installer must not trust virtualizable LOCALAPPDATA'
+Assert-True ($installerSource -match '\$desktopShortcut\.TargetPath\s*=\s*\$powershellExe') 'desktop shortcut should target system PowerShell, not a trackable copied launcher'
+Assert-True ($installerSource -match '\$desktopShortcut\.Arguments\s*=\s*\$shortcutArguments') 'desktop shortcut should carry the canonical app script as an argument'
 
 $exam = [pscustomobject]@{ ownerType = 'mine'; date = '2026-10-02'; type = '考试'; title = 'Physics Final' }
 $project = [pscustomobject]@{ ownerType = 'mine'; date = '2026-10-02'; type = '考试'; title = 'Summative Project 1' }
@@ -41,6 +50,11 @@ Assert-True ($linked[1].type -eq '作业') 'linkage should include non-exam thin
 $tempFolder = Join-Path ([IO.Path]::GetTempPath()) ('GeorgeTodoTests-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempFolder | Out-Null
 try {
+    $markerApp = Join-Path $tempFolder 'MarkerApp'
+    New-Item -ItemType Directory -Path $markerApp | Out-Null
+    [IO.File]::WriteAllText((Join-Path $markerApp 'install-root.txt'), 'E:\Programs\To-Do-List', [Text.UTF8Encoding]::new($false))
+    Assert-True ((Get-GeorgeTodoInstallRoot -ScriptRoot $markerApp) -eq 'E:\Programs\To-Do-List') 'copied app should follow its canonical installation marker'
+
     $statePath = Join-Path $tempFolder 'tasks.json'
     $state = New-GeorgeTodoState
     Assert-True ($state.settings.draftTask -eq '') 'new state should include an empty autosaved draft'
