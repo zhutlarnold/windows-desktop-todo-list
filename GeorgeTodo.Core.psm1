@@ -178,7 +178,9 @@ function Get-GeorgeTodoDataRoot {
     if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
         $InstallRoot = Get-GeorgeTodoInstallRoot -ScriptRoot $ScriptRoot
     }
-    return [IO.Path]::GetFullPath((Join-Path $InstallRoot 'Data'))
+    # Path.Combine is intentionally used instead of Join-Path so callers can
+    # validate or prepare a destination drive that does not exist yet.
+    return [IO.Path]::GetFullPath([IO.Path]::Combine($InstallRoot, 'Data'))
 }
 
 function Read-GeorgeTodoState {
