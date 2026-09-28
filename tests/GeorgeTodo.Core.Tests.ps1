@@ -7,6 +7,11 @@ function Assert-True([bool]$Condition, [string]$Message) {
 
 $date = [datetime]'2026-09-26'
 Assert-True ((Get-DailyEncouragement -Date $date) -ne (Get-DailyEncouragement -Date $date.AddDays(1))) 'daily encouragement should change on adjacent days'
+Assert-True ((Get-DailyEncouragementTitle -Date $date) -ne (Get-DailyEncouragementTitle -Date $date.AddDays(1))) 'daily encouragement title should change on adjacent days'
+$encouragementCycle = @(0..30 | ForEach-Object { Get-DailyEncouragement -Date $date.AddDays($_) })
+$titleCycle = @(0..30 | ForEach-Object { Get-DailyEncouragementTitle -Date $date.AddDays($_) })
+Assert-True (@($encouragementCycle | Select-Object -Unique).Count -eq 31) 'encouragement text should not repeat during the full 31-day cycle'
+Assert-True (@($titleCycle | Select-Object -Unique).Count -eq 31) 'encouragement title should not repeat during the full 31-day cycle'
 
 $fixedInstallRoot = Get-GeorgeTodoInstallRoot -PreferredRoot 'E:\Programs\To-Do-List'
 $dataRoot = Get-GeorgeTodoDataRoot -InstallRoot $fixedInstallRoot
@@ -20,6 +25,8 @@ $installerSource = Get-Content -LiteralPath (Join-Path $projectRoot 'Install-Geo
 Assert-True ($appSource -match 'Get-GeorgeTodoInstallRoot\s+-ScriptRoot\s+\$PSScriptRoot') 'app should resolve its fixed installation marker'
 Assert-True ($appSource -match '\$script:dataFolder\s*=\s*Get-GeorgeTodoDataRoot\s+-InstallRoot') 'app should always store data below the fixed installation root'
 Assert-True ($appSource -match 'Add_TextChanged\(\{Save-DraftNow\}\)') 'new-task input should be wired to write-through autosave'
+Assert-True ($appSource -match 'Refresh-DailyEncouragement') 'app should refresh daily encouragement while remaining in the background'
+Assert-True ($appSource -match 'Refresh-Exams;Refresh-DailyEncouragement') 'minute timer should check for a date rollover'
 Assert-True ($appSource -match '\[IO\.File\]::Open\(\$script:lockPath') 'single instance should use a cross-context exclusive file lock'
 Assert-True ($appSource -match 'recall\.signal') 'window recall should use a cross-context file signal'
 Assert-True ($appSource -notmatch 'EventWaitHandle|Threading\.Mutex') 'window recall must not rely on app-container kernel namespaces'

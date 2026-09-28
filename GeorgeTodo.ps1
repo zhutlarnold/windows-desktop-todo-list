@@ -41,7 +41,8 @@ $script:expandedSubtext = [Collections.Generic.HashSet[string]]::new()
 $script:allowExit = $false
 $script:notifyIcon = $null
 $script:suppressDraftSave = $false
-Write-RuntimeLog "START version=20260927-program-drive-file-recall tasks=$(@($script:state.tasks).Count) install=$script:installRoot data=$script:dataFolder source=$PSScriptRoot"
+$script:encouragementDate = [datetime]::MinValue
+Write-RuntimeLog "START version=20260928-daily-quote-refresh tasks=$(@($script:state.tasks).Count) install=$script:installRoot data=$script:dataFolder source=$PSScriptRoot"
 
 [xml]$xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -139,7 +140,7 @@ Write-RuntimeLog "START version=20260927-program-drive-file-recall tasks=$(@($sc
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
         <Image x:Name="QuotePigImage" Width="58" Height="48" Margin="0,0,10,0" Stretch="Uniform"/>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-          <TextBlock Text="今天也要稳稳前进" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,3"/>
+          <TextBlock x:Name="QuoteTitle" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,3"/>
           <TextBlock x:Name="QuoteText" FontSize="12" Foreground="#6C4A64" TextWrapping="Wrap" LineHeight="19"/>
         </StackPanel>
       </Grid>
@@ -241,6 +242,7 @@ function Restore-TodoWindow {
         }
         Dock-Right
         Reload-StateFromDisk | Out-Null
+        Refresh-DailyEncouragement
         Restore-Draft
         Render-Tasks
         $window.Activate() | Out-Null
@@ -258,6 +260,19 @@ function Hide-TodoWindow {
     $window.Hide()
     $statusText.Text = '已隐藏；按 Ctrl + Alt + T 可重新打开'
     Write-RuntimeLog "HIDE completed visible=$($window.IsVisible)"
+}
+
+function Refresh-DailyEncouragement {
+    param(
+        [datetime]$Now = (Get-Date),
+        [switch]$Force
+    )
+
+    if (-not $Force -and $script:encouragementDate -eq $Now.Date) { return }
+    (& $find 'QuoteTitle').Text = Get-DailyEncouragementTitle -Date $Now
+    (& $find 'QuoteText').Text = Get-DailyEncouragement -Date $Now
+    $script:encouragementDate = $Now.Date
+    Write-RuntimeLog "ENCOURAGEMENT refreshed date=$($Now.ToString('yyyy-MM-dd'))"
 }
 
 function Test-RecallSignal {
@@ -451,7 +466,7 @@ function Dock-Right {
     $window.Top=($physicalArea.Bottom/$scaleY)-$window.ActualHeight-12
 }
 
-(& $find 'QuoteText').Text=Get-DailyEncouragement
+Refresh-DailyEncouragement -Force
 (& $find 'TitleBar').Add_MouseLeftButtonDown({if($_.ButtonState-eq'Pressed'){$window.DragMove()}})
 (& $find 'MinimizeButton').Add_Click({$window.WindowState='Minimized'})
 (& $find 'CloseButton').Add_Click({Hide-TodoWindow})
@@ -464,7 +479,7 @@ $groupCombo.Add_SelectionChanged({Save-DraftNow})
 (& $find 'RefreshExamsButton').Add_Click({Refresh-Exams $true})
 (& $find 'NewGroupButton').Add_Click({$value=Show-TextEditor '新建分组' '分组名称';if($null-ne$value-and$value-notin@($script:state.groups)){$script:state.groups=@($script:state.groups)+$value;Save-State '分组已创建';Refresh-Groups;Render-Tasks;$groupCombo.SelectedItem=$value}})
 
-$timer=[Windows.Threading.DispatcherTimer]::new();$timer.Interval=[timespan]::FromSeconds(60);$timer.Add_Tick({Refresh-Exams});$timer.Start()
+$timer=[Windows.Threading.DispatcherTimer]::new();$timer.Interval=[timespan]::FromSeconds(60);$timer.Add_Tick({Refresh-Exams;Refresh-DailyEncouragement});$timer.Start()
 Write-RuntimeLog 'CHECKPOINT timer-started'
 $recallTimer=[Windows.Threading.DispatcherTimer]::new();$recallTimer.Interval=[timespan]::FromMilliseconds(250);$recallTimer.Add_Tick({Test-RecallSignal});$recallTimer.Start()
 $trayMenu = [Windows.Forms.ContextMenuStrip]::new()

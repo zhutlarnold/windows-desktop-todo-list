@@ -34,14 +34,38 @@ $script:Encouragements = @(
     '今天的清单有边界，你的可能性没有。'
 )
 
+$script:EncouragementTitles = @(
+    '小事也算数', '先迈出第一步', '稳稳前进就很好', '把目标变小一点', '专注眼前这一格',
+    '每一点进度都值得', '今天比昨天多一点', '先从五分钟开始', '完成是送给未来的礼物', '给自己一点耐心',
+    '难题也能慢慢拆', '按自己的节奏来', '把注意力交给此刻', '让清单替大脑减负', '计划与休息都重要',
+    '完成一项，肯定一次', '先抓住最重要的事', '努力正在悄悄积累', '慢一点也在前进', '今天的勾让明天更轻',
+    '把担心变成行动', '认真做好眼前这一项', '一件一件来就好', '看见每一点进度', '给今天一点好心情',
+    '计划可以随时调整', '先完成，再优化', '开始整理就是进步', '安静完成一件难事', '准备正在每天增长',
+    '今天的可能性很多'
+)
+
+function Get-DailyEncouragementIndex {
+    param([datetime]$Date)
+
+    $epoch = [datetime]::new(2026, 1, 1)
+    $dayNumber = [math]::Floor(($Date.Date - $epoch).TotalDays)
+    return (($dayNumber % $script:Encouragements.Count) + $script:Encouragements.Count) % $script:Encouragements.Count
+}
+
 function Get-DailyEncouragement {
     [CmdletBinding()]
     param([datetime]$Date = (Get-Date))
 
-    $epoch = [datetime]::new(2026, 1, 1)
-    $dayNumber = [math]::Floor(($Date.Date - $epoch).TotalDays)
-    $index = (($dayNumber % $script:Encouragements.Count) + $script:Encouragements.Count) % $script:Encouragements.Count
+    $index = Get-DailyEncouragementIndex -Date $Date
     return $script:Encouragements[$index]
+}
+
+function Get-DailyEncouragementTitle {
+    [CmdletBinding()]
+    param([datetime]$Date = (Get-Date))
+
+    $index = Get-DailyEncouragementIndex -Date $Date
+    return $script:EncouragementTitles[$index]
 }
 
 function Test-SumFutureAssessment {
@@ -251,4 +275,4 @@ function Save-GeorgeTodoState {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
-Export-ModuleMember -Function Get-DailyEncouragement, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, Get-GeorgeTodoInstallRoot, Get-GeorgeTodoDataRoot, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState
+Export-ModuleMember -Function Get-DailyEncouragement, Get-DailyEncouragementTitle, Test-SumFutureAssessment, Read-SumPlanSnapshot, Get-SumFutureExams, Get-SumUpcomingItems, Get-GeorgeTodoInstallRoot, Get-GeorgeTodoDataRoot, New-GeorgeTodoState, Read-GeorgeTodoState, Save-GeorgeTodoState
